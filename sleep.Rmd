@@ -1,0 +1,333 @@
+---
+title: "Sleep"
+output: html_document
+---
+
+```{r setup}
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(XML)
+
+#load apple health export.xml file
+  xml <- xmlParse("data/20170413.xml")
+
+#transform xml file to data frame - select the Record rows from the xml file
+  df <- XML:::xmlAttrsToDataFrame(xml["//Record"])
+
+#make value variable numeric
+  df$value <- as.numeric(as.character(df$value))
+
+#make endDate in a date time variable POSIXct using lubridate with eastern time zone
+  df$startDate_full <-ymd_hms(df$startDate)
+  df$endDate_full <-ymd_hms(df$endDate)
+
+##add in year month date dayofweek hour columns
+  df$endMonth<-format(df$endDate_full,"%m")
+  df$endYear<-format(df$endDate_full,"%Y")
+  df$endDate<- as.Date(format(df$endDate_full,"%Y-%m-%d"))
+  df$endDayofweek <-wday(df$endDate_full, label=TRUE, abbr=FALSE)
+  df$endHour <-format(df$endDate_full,"%H")
+  
+  df$startMonth<-format(df$startDate_full,"%m")
+  df$startYear<-format(df$startDate_full,"%Y")
+  df$startDate<- as.Date(format(df$startDate_full,"%Y-%m-%d"))
+  df$startDayofweek <-wday(df$startDate_full, label=TRUE, abbr=FALSE)
+  df$startHour <-format(df$startDate_full,"%H")
+  str(df)
+  
+  table(df$type)
+```
+
+# sleep
+
+```{r}
+df_sleep <- df %>%
+  filter(
+    type == 'HKCategoryTypeIdentifierSleepAnalysis' & 
+      sourceName == "Misfit") %>%
+  mutate(
+    time = as.numeric(difftime(endDate_full, startDate_full), unit = "hours")
+  ) %>%
+  select(
+    sourceName, startDate, endDate, startDate_full:time
+  )
+
+# does sleep start before midday or after?
+  df_sleep <- df_sleep %>%
+    mutate(
+      sleep_day = case_when(
+        as.numeric(.$startHour) >= 12 ~ "Today",
+        TRUE ~ "Yesterday"
+      )
+    )
+  
+# total sleep
+  df_sleep <- df_sleep %>%
+    group_by(startDate, sleep_day) %>%
+    summarise(
+      time = sum(time),
+      # min if today, max if yesterday
+      temp_min = min(startDate_full),
+      temp_max = max(endDate_full)
+    ) 
+  
+  # move sleep midnight to midday to day before
+  df_sleep <- df_sleep %>% ungroup %>%
+    mutate(
+      sleep_day_recode = case_when(
+        .$sleep_day == "Yesterday" ~ "Today recoded",
+        TRUE ~ "Today"
+      ),
+      startDate_recode = case_when(
+        .$sleep_day == "Yesterday" ~ .$startDate - 1,
+        TRUE ~ .$startDate
+      )
+    )
+  
+  # summarise
+  df_sleep <- df_sleep %>%
+    group_by(startDate_recode) %>%
+    summarise(
+      time = sum(time),
+      bedtime = min(temp_min),
+      getup = max(temp_max)
+    )
+  
+  # add days in US/EU and if weekday
+  df_sleep <- df_sleep %>%
+    mutate(
+      # NZ
+      region = if_else(
+        (startDate_recode >= as.Date("2016-12-22") & 
+           startDate_recode <= as.Date("2017-01-12")),
+        "NZ","EU"
+      ),
+      region = if_else(
+        # US
+        (startDate_recode >= as.Date("2017-03-26") & 
+           startDate_recode <= as.Date("2017-04-03")) |
+          (startDate_recode >= as.Date("2017-06-18") & 
+           startDate_recode <= as.Date("2017-06-24")),
+        "US",region
+      ),
+      # weekday?
+      weekday = wday(bedtime),
+      workday = if_else(
+        weekday > 1 & weekday < 7, "Workday","Weekend"
+      )
+    )
+  
+  
+
+# # expand all days
+#   df_sleep <- left_join(
+#     data.frame(
+#       startDate = as.Date(
+#         min(df_sleep$startDate):max(df_sleep$startDate), 
+#         origin = "1970-01-01"
+#         )
+#     ),
+#     df_sleep,
+#     by = "startDate"
+#   )
+  
+```
+
+# sleep plot
+
+```{r}
+# over time
+df_sleep %>%
+  #print table steps by date by month by year
+  ggplot(
+    aes(x=startDate_recode, y=time, 
+        colour = region,
+        shape = workday
+        )
+    ) + 
+  geom_point(alpha = 0.8) + 
+  ggthemes::theme_hc() +
+  labs(
+    x = "Date",
+    y = "Time sleeping",
+    colour = "Where in the world?",
+    title = "Hours slept each night",
+    subtitle = "based on data collected from my misfit",
+    shape = "Weekday?"
+    ) 
+  
+# hist by region and workday
+df_sleep %>%
+  # EU only
+  filter(region == "EU") %>%
+  ggplot(
+    aes(x=time, fill = workday)
+    ) + 
+  geom_histogram(
+    binwidth = 1,
+    alpha = 0.8, position = "dodge"
+    ) + 
+  ggthemes::theme_hc() +
+  facet_grid(workday ~ .) +
+  labs(
+    x = "Hours slept",
+    y = "Count",
+    title = "Hours slept each night",
+    subtitle = "filtered to data nights spent in Europe",
+    fill = "Weekday?"
+    )  
+
+# heat map when asleep
+  temp_sleep <- df_sleep %>%
+    # EU only
+    filter(region == "EU") %>%
+    mutate(
+      weekday = wday(bedtime, label = TRUE),
+      bedtime = as.numeric(format(bedtime,"%H")),
+      getup = as.numeric(format(getup,"%H"))
+      )
+  
+  temp_output <- data.frame(
+    Hour = rep(1:24,7),
+    Weekday = rep(unique(temp_sleep$weekday)),
+    HoursSlept = 0
+  ) %>%
+    arrange(
+      Weekday, Hour
+    )
+  
+  #holder <- vector("numeric", nrow(temp_output))
+  for(i in 1:nrow(temp_output)){
+    temp_i <- temp_output[i,]
+    # pre midnight
+    temp_i_dat <- temp_sleep %>%
+      filter(
+        temp_i$Weekday == weekday &
+          bedtime <= temp_i$Hour &
+          # do not take if less than 12, as that means day before
+          bedtime >= 12
+      ) 
+    temp_premidnight <- nrow(temp_i_dat)
+    # post midnight 
+    temp_i$Weekday_num <- as.numeric(temp_i$Weekday)
+    temp_i$Weekday_num <- case_when(
+      temp_i$Weekday_num == 7 ~ 1,
+      TRUE ~ temp_i$Weekday_num + 1
+    )
+    temp_i_dat <- temp_sleep %>%
+      mutate(
+        weekday_num = as.numeric(weekday)
+      ) %>%
+      filter(
+        temp_i$Weekday_num == weekday_num &
+          temp_i$Hour <= getup
+      ) 
+    temp_postmidnight <- nrow(temp_i_dat)
+    
+    # apply
+    temp_output[i,]$HoursSlept <- sum(temp_premidnight,temp_postmidnight)
+  }
+  
+
+
+temp_output %>%
+  ggplot(aes(x=Weekday, y=Hour, fill=HoursSlept)) + 
+  geom_tile() + 
+  scale_fill_continuous(labels = scales::comma, low = 'white', high = 'red') +
+  theme_bw() + 
+  #theme(panel.grid.major = element_blank()) +
+  ggthemes::theme_hc() +
+  labs(
+    x = "Day of the week",
+    title = "When I'm asleep",
+    subtitle = "heatmap showing time of day asleep",
+    fill = "Count of times asleep at that hour"
+    )  
+```
+
+# others plots
+
+```{r}
+df %>%
+  filter(type == 'HKQuantityTypeIdentifierStepCount') %>%
+  group_by(startYear,startMonth) %>%
+  summarize(steps=sum(value)) %>%
+  #print table steps by startMonth by startYear
+  print (n=100) %>%
+  #graph data by startMonth by startYear
+  ggplot(aes(x=startMonth, y=steps, fill=startYear)) + 
+  geom_bar(position='dodge', stat='identity') +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_brewer() +
+  theme_bw() +  
+  theme(panel.grid.major = element_blank())
+
+#boxplot data by startMonth by startYear
+df %>%
+  filter(type == 'HKQuantityTypeIdentifierStepCount') %>%
+  group_by(startDate,startMonth,startYear) %>%
+  summarize(steps=sum(value)) %>%
+  #print table steps by startDate by startMonth by startYear
+  print (n=100) %>%
+  ggplot(aes(x=startMonth, y=steps)) + 
+  geom_boxplot(aes(fill=(startYear))) + 
+  scale_fill_brewer() +
+  theme_bw() +  
+  theme(panel.grid.major = element_blank())
+
+#summary statistics by startMonth 
+df %>%
+  filter(type == 'HKQuantityTypeIdentifierStepCount') %>%
+  group_by(startDate,startMonth,startYear) %>%
+  summarize(steps=sum(value)) %>%
+  #filter(startYear==2015) %>%
+  group_by(startMonth) %>%
+  summarize(mean = round(mean(steps), 2), sd = round(sd(steps), 2), 
+            median = round(median(steps), 2), max = round(max(steps), 2), 
+            min = round(min(steps), 2),`25%`= quantile(steps, probs=0.25),
+            `75%`= quantile(steps, probs=0.75))
+
+#boxplot data by day of week startYear
+df %>%
+  filter(type == 'HKQuantityTypeIdentifierStepCount') %>%
+  group_by(startDayofweek,startDate,startYear) %>%
+  summarize(steps=sum(value)) %>%
+  #print table steps by startDate by startMonth by startYear
+  print (n=100) %>%
+  ggplot(aes(x=startDayofweek, y=steps)) + 
+  geom_boxplot(aes(fill=(startYear))) + 
+  scale_fill_brewer() +
+  theme_bw() +  
+  theme(panel.grid.major = element_blank())
+
+
+#summary statistics by day of week for 2015
+df %>%
+  filter(type == 'HKQuantityTypeIdentifierStepCount') %>%
+  group_by(startDayofweek,startDate,startYear) %>%
+  summarize(steps=sum(value)) %>%
+  #filter(startYear==2015) %>%
+  group_by(startDayofweek) %>%
+  summarize(mean = round(mean(steps), 2), sd = round(sd(steps), 2), 
+            median = round(median(steps), 2), max = round(max(steps), 2), 
+            min = round(min(steps), 2),`25%`= quantile(steps, probs=0.25),
+            `75%`= quantile(steps, probs=0.75)) %>%
+  arrange(desc(median))
+
+#heatmap day of week hour of day
+df %>%
+  filter(type == 'HKQuantityTypeIdentifierStepCount') %>%
+  group_by(startDate,startDayofweek,startHour) %>% 
+  summarize(steps=sum(value)) %>% 
+  group_by(startHour,startDayofweek) %>% 
+  summarize(steps=sum(steps)) %>% 
+  arrange(desc(steps)) %>%
+  #print table steps by startDate by startMonth by startYear
+  print (n=100) %>%
+  ggplot(aes(x=startDayofweek, y=startHour, fill=steps)) + 
+  geom_tile() + 
+  scale_fill_continuous(labels = scales::comma, low = 'white', high = 'red') +
+  theme_bw() + 
+  theme(panel.grid.major = element_blank())
+```
