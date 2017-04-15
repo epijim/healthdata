@@ -136,7 +136,7 @@ df_sleep <- df %>%
 
 # sleep plot
 
-```{r}
+```{r overtime}
 # over time
 df_sleep %>%
   #print table steps by date by month by year
@@ -178,6 +178,9 @@ df_sleep %>%
     fill = "Weekday?"
     )  
 
+```
+
+```{r heatmapv1}
 # heat map when asleep
   temp_sleep <- df_sleep %>%
     # EU only
@@ -244,6 +247,137 @@ temp_output %>%
     subtitle = "heatmap showing time of day asleep",
     fill = "Count of times asleep at that hour"
     )  
+```
+
+try splitting by actual time overlap
+
+```{r heatmapv2}
+
+# time spent in each hour
+  # function to calculate overlap post midnight
+  jb_OverlapPost <- function(
+    time = "01",
+    start = "",
+    end = "",
+    date = ""
+  ){
+    output <- intersect(
+          interval(start,end),
+          interval(
+            ymd_hms(
+              paste0(
+                as.character(date + 1),
+                " ",time,":00:00"
+                )
+              ),
+            ymd_hms(
+              paste0(
+                as.character(date + 1),
+                " ",time,":59:00"
+                )
+              )
+          )
+        ) / dminutes(1)
+    return(output)
+  }
+  # function to calculate overlap post midnight
+  jb_OverlapPre <- function(
+    time = "21",
+    start = "",
+    end = "",
+    date = ""
+  ){
+    output <- intersect(
+          interval(start,end),
+          interval(
+            ymd_hms(
+              paste0(
+                as.character(date),
+                " ",time,":00:00"
+                )
+              ),
+            ymd_hms(
+              paste0(
+                as.character(date),
+                " ",time,":59:00"
+                )
+              )
+          )
+        ) / dminutes(1)
+    return(output)
+  }
+    
+
+  # run function
+  temp_sleep <- df_sleep %>%
+    filter(region == "EU") %>%
+    mutate(
+      # occurs after midnight (next day)
+      int_24 = jb_OverlapPost("00",bedtime,getup,startDate_recode),
+      int_01 = jb_OverlapPost("01",bedtime,getup,startDate_recode),
+      int_02 = jb_OverlapPost("02",bedtime,getup,startDate_recode),
+      int_03 = jb_OverlapPost("03",bedtime,getup,startDate_recode),
+      int_04 = jb_OverlapPost("04",bedtime,getup,startDate_recode),
+      int_05 = jb_OverlapPost("05",bedtime,getup,startDate_recode),
+      int_06 = jb_OverlapPost("06",bedtime,getup,startDate_recode),
+      int_07 = jb_OverlapPost("07",bedtime,getup,startDate_recode),
+      int_08 = jb_OverlapPost("08",bedtime,getup,startDate_recode),
+      int_09 = jb_OverlapPost("09",bedtime,getup,startDate_recode),
+      int_10 = jb_OverlapPost("10",bedtime,getup,startDate_recode),
+      int_11 = jb_OverlapPost("11",bedtime,getup,startDate_recode),
+      # occurs after midnight (next day)
+      int_12 = jb_OverlapPre("12",bedtime,getup,startDate_recode),
+      int_13 = jb_OverlapPre("13",bedtime,getup,startDate_recode),
+      int_14 = jb_OverlapPre("14",bedtime,getup,startDate_recode),
+      int_15 = jb_OverlapPre("15",bedtime,getup,startDate_recode),
+      int_16 = jb_OverlapPre("16",bedtime,getup,startDate_recode),
+      int_17 = jb_OverlapPre("17",bedtime,getup,startDate_recode),
+      int_18 = jb_OverlapPre("18",bedtime,getup,startDate_recode),
+      int_19 = jb_OverlapPre("19",bedtime,getup,startDate_recode),
+      int_20 = jb_OverlapPre("20",bedtime,getup,startDate_recode),
+      int_21 = jb_OverlapPre("21",bedtime,getup,startDate_recode),
+      int_22 = jb_OverlapPre("22",bedtime,getup,startDate_recode),
+      int_23 = jb_OverlapPre("23",bedtime,getup,startDate_recode)
+    ) %>%
+    select(
+      #bedtime,getup,
+      startDate_recode,starts_with("int_")
+    ) %>%
+    # weekday
+    mutate(
+      weekday = wday(startDate_recode, label=TRUE, abbr=FALSE)
+    ) %>% select(-startDate_recode) %>%
+    # gather into long format
+    tidyr::gather(
+      timepoint,value,-weekday
+    ) %>%
+    # get totals
+    group_by(weekday,timepoint) %>%
+    summarise(
+      total = sum(value, na.rm = TRUE)
+    ) %>%
+    # tidy
+    mutate(
+      Hour = as.numeric(gsub("[^0-9]","",timepoint))
+    )
+  
+temp_sleep %>%
+  ggplot(aes(x=weekday, y=Hour, fill=total)) + 
+  geom_tile() + 
+  scale_fill_continuous(labels = scales::comma, low = 'white', high = 'red') +
+  theme_bw() + 
+  #theme(panel.grid.major = element_blank()) +
+  ggthemes::theme_hc() +
+  theme(
+    legend.position = "left"
+  ) +
+  labs(
+    x = "Day of the week",
+    title = "When I'm asleep",
+    subtitle = "filtered to nights in the EU only",
+    fill = "Total \nminutes \nasleep"
+    )  
+    
 ```
 
 # others plots
