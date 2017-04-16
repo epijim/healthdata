@@ -34,6 +34,18 @@ library(XML)
   df$startDate<- as.Date(format(df$startDate_full,"%Y-%m-%d"))
   df$startDayofweek <-wday(df$startDate_full, label=TRUE, abbr=FALSE)
   df$startHour <-format(df$startDate_full,"%H")
+  
+  df <- df %>%
+    mutate(
+      sourceName = as.character(sourceName),
+      sourceName = if_else(
+        sourceName == "James work phone","iPhone",sourceName
+      ),
+      sourceName = if_else(
+        grepl("Watch",sourceName),"iWatch",sourceName
+      )
+    )
+  
   str(df)
   
   table(df$type)
@@ -378,6 +390,225 @@ temp_sleep %>%
     fill = "Total \nminutes \nasleep"
     )  
     
+```
+
+# steps
+
+```{r}
+df_steps <- df %>%
+  filter(type == "HKQuantityTypeIdentifierStepCount") %>%
+  select(
+    -c(type,sourceVersion,unit,device)
+  ) %>%
+  mutate(
+      # NZ
+      region = if_else(
+        (startDate >= as.Date("2016-12-22") & 
+           startDate <= as.Date("2017-01-12")),
+        "NZ","EU"
+      ),
+      region = if_else(
+        # US
+        (startDate >= as.Date("2017-03-26") & 
+           startDate <= as.Date("2017-04-03")) |
+          (startDate >= as.Date("2017-06-18") & 
+           startDate <= as.Date("2017-06-24")),
+        "US",region
+      ),
+      # weekday?
+      weekday = wday(startDate_full),
+      workday = if_else(
+        weekday > 1 & weekday < 7, "Workday","Weekend"
+      )
+    )
+  
+# over time
+df_steps %>%
+  # summarise by day
+  group_by(
+    startDate,region,workday,sourceName
+  ) %>%
+  summarise(
+    total = sum(value)
+  ) %>%
+  #print table steps by date by month by year
+  ggplot(
+    aes(x=startDate, y=total, 
+        colour = region,
+        shape = workday
+        )
+    ) + 
+  geom_point(alpha = 0.8) + 
+  ggthemes::theme_hc() +
+  labs(
+    x = "Date",
+    y = "Total number of steps",
+    colour = "Where in the world?",
+    title = "Step counter totals",
+    subtitle = "comparing three devices that count my steps",
+    shape = "Weekday?"
+    ) +
+  facet_grid(sourceName ~ .)
+
+```
+
+```{r refiltersteps}
+df_steps <- df_steps %>%
+  filter(
+    startDate > as.Date("2017-03-22")
+  ) %>%
+  # summarise by day
+  group_by(
+    startDate,region,workday,sourceName
+  ) %>%
+  summarise(
+    total = sum(value)
+  ) %>% ungroup()
+
+```
+
+```{r stepsFromApril}
+
+df_steps %>%
+  #print table steps by date by month by year
+  ggplot(
+    aes(x=startDate, y=total, 
+        colour = sourceName, shape = sourceName
+        )
+    ) + 
+  geom_point(alpha = 0.8) + 
+  ggthemes::theme_hc() +
+  labs(
+    x = "Date",
+    y = "Total number of steps",
+    #colour = "Where in the world?",
+    title = "Step counter totals",
+    subtitle = "comparing three devices that count my steps"
+    #shape = "Weekday?"
+    ) +
+  facet_grid(region ~ .)
+```
+
+In the ternery plot, all sides are weighted to sum to zero, so distance from the center represents the skew between the step count recorded by the Misfit, iWatch and iPhone.
+
+```{r ternery}
+library(ggtern)
+
+ggtern(
+  df_steps %>% 
+    select(sourceName,startDate,total) %>%
+    tidyr::spread(sourceName,total),
+  aes(iPhone,iWatch,Misfit)
+  ) + 
+  # stat_density_tern(geom='polygon',
+  #                       aes(fill=..level..),
+  #                       base="identity",  ###NB Base Specification
+  #                       colour='grey50') + 
+  geom_point(colour = "red", alpha = 0.6, size = 3) + 
+  theme_rgbw() + 
+  theme_showarrows() + 
+  #theme_legend_position('topleft') + 
+  labs(title  = "Threeway comparison of daily step count",
+       subtitle = "ternery plot showing skew in the data") + 
+  geom_Tisoprop(value=0.5,colour='darkred', alpha = 0.5) + 
+  geom_Lisoprop(value=0.5,colour='darkblue') + 
+  geom_Risoprop(value=0.5,colour='darkgreen') +
+  weight_percent()
+```
+
+Looks like there are two days I didn't wear the Misfit, so I will remove those two days.
+
+```{r removenoweardays}
+# days to delete
+  df_steps %>%
+    filter(total < 500) %>%
+    .$startDate
+
+df_steps <- df_steps %>%
+  filter(
+    !startDate %in% (df_steps %>%
+      filter(total < 500) %>%
+      .$startDate)
+  )
+```
+
+Compare relative to misfit.
+
+```{r modelsteps}
+
+m_steps <- glm(
+  total ~ region + workday + sourceName, 
+  data = df_steps %>%
+    mutate(
+      sourceName = relevel(as.factor(sourceName), ref = "Misfit")
+    )
+)
+
+# use the cluster.vcov function to get variance-covariance matrix
+library(multiwayvcov)
+
+temp <- as.data.frame(lmtest::coeftest(
+  m_steps, 
+  multiwayvcov::cluster.vcov(m_steps, df_steps$startDate)
+  )[])
+
+# make summary data
+left_join(
+    tibble(
+      coef = names(coef(m_steps)),
+      estimate = coef(m_steps)
+      ),
+    as.data.frame(confint(m_steps)) %>%
+      mutate(
+        coef = row.names(.)
+        ),
+    by = "coef"
+  ) %>%
+  mutate(
+    # colour = ifelse(
+    #   .$coef == "sourceNameiWatch" |
+    #     .$coef == "sourceNameiPhone",
+    #   "blue","black"
+    # ),
+    coef = case_when(
+      .$coef == "workdayWorkday" ~ "Workday (c.f. weekend)",
+      .$coef == "sourceNameiWatch" ~ "iWatch (c.f. Misfit)",
+      .$coef == "sourceNameiPhone" ~ "iPhone (c.f. Misfit)",
+      .$coef == "regionUS" ~ "In the US (c.f. in Europe)",
+      TRUE ~ "Model intercept"
+    )
+  ) %>%
+  ggplot() +
+    geom_pointrange(
+      aes(
+        x = coef, 
+        y = estimate, 
+        ymin = `2.5 %`, 
+        ymax = `97.5 %`
+        )
+    ) +
+    geom_label(
+      aes(
+        x = coef, 
+        y = estimate,
+        label = round(estimate),
+        nudge_y = 0.5
+      )
+    ) +
+    ggthemes::theme_hc() +
+    coord_flip() +
+    geom_hline(
+      aes(yintercept=0), colour = "red", linetype="dotted"
+      ) +
+    labs(
+      x = "",
+      y = "Daily step count"
+    ) +
+  theme(
+    panel.grid.major.y = element_blank()
+  )
+  
+  
 ```
 
 # others plots
