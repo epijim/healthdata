@@ -591,8 +591,7 @@ left_join(
       aes(
         x = coef, 
         y = estimate,
-        label = round(estimate),
-        nudge_y = 0.5
+        label = round(estimate)
       )
     ) +
     ggthemes::theme_hc() +
