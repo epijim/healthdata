@@ -1,6 +1,9 @@
 ---
 title: "Sleep"
-output: html_document
+output: 
+  html_document: 
+    theme: cosmo
+    toc: yes
 ---
 
 ```{r setup}
@@ -509,7 +512,7 @@ ggtern(
   theme_showarrows() + 
   #theme_legend_position('topleft') + 
   labs(title  = "Threeway comparison of daily step count",
-       subtitle = "ternery plot showing skew in the data") + 
+       subtitle = "ternery plot showing step count on the same day from 3 devices") + 
   geom_Tisoprop(value=0.5,colour='darkred', alpha = 0.5) + 
   geom_Lisoprop(value=0.5,colour='darkblue') + 
   geom_Risoprop(value=0.5,colour='darkgreen') +
@@ -544,6 +547,8 @@ m_steps <- glm(
     )
 )
 
+plot(m_steps)
+
 # use the cluster.vcov function to get variance-covariance matrix
 library(multiwayvcov)
 
@@ -551,6 +556,11 @@ temp <- as.data.frame(lmtest::coeftest(
   m_steps, 
   multiwayvcov::cluster.vcov(m_steps, df_steps$startDate)
   )[])
+
+temp %>%
+  mutate(
+    ll = estimate + 
+  )
 
 # make summary data
 left_join(
@@ -579,6 +589,9 @@ left_join(
     )
   ) %>%
   ggplot() +
+    geom_hline(
+      aes(yintercept=0), colour = "red", linetype="dotted"
+      ) +
     geom_pointrange(
       aes(
         x = coef, 
@@ -591,15 +604,14 @@ left_join(
       aes(
         x = coef, 
         y = estimate,
-        label = round(estimate)
+        label = paste(round(estimate),"steps")
       )
     ) +
     ggthemes::theme_hc() +
     coord_flip() +
-    geom_hline(
-      aes(yintercept=0), colour = "red", linetype="dotted"
-      ) +
     labs(
+      title = "Effect of variables on step count",
+      subtitle = "from a simple linear model, not adjusting for clustered SE within days",
       x = "",
       y = "Daily step count"
     ) +
@@ -609,6 +621,8 @@ left_join(
   
   
 ```
+
+
 
 # others plots
 
