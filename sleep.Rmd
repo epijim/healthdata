@@ -10,7 +10,7 @@ library(lubridate)
 library(XML)
 
 #load apple health export.xml file
-  xml <- xmlParse("data/20170413.xml")
+  xml <- xmlParse("data/20170416.xml")
 
 #transform xml file to data frame - select the Record rows from the xml file
   df <- XML:::xmlAttrsToDataFrame(xml["//Record"])
