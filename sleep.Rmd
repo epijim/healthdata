@@ -4,6 +4,11 @@ output:
   html_document: 
     theme: cosmo
     toc: yes
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
 ---
 
 ```{r setup}
@@ -557,10 +562,6 @@ temp <- as.data.frame(lmtest::coeftest(
   multiwayvcov::cluster.vcov(m_steps, df_steps$startDate)
   )[])
 
-temp %>%
-  mutate(
-    ll = estimate + 
-  )
 
 # make summary data
 left_join(
