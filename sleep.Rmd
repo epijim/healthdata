@@ -18,7 +18,7 @@ library(lubridate)
 library(XML)
 
 #load apple health export.xml file
-  xml <- xmlParse("data/20170416.xml")
+  xml <- xmlParse("data/20170605.xml")
 
 #transform xml file to data frame - select the Record rows from the xml file
   df <- XML:::xmlAttrsToDataFrame(xml["//Record"])
@@ -58,6 +58,14 @@ library(XML)
   
   table(df$type)
 ```
+
+# idea
+
+A structural bayasian time series approach to quantify the effect of my daughter on my sleep patterns.
+
+https://google.github.io/CausalImpact/
+
+https://google.github.io/CausalImpact/CausalImpact.html
 
 # sleep
 
@@ -127,6 +135,8 @@ df_sleep <- df %>%
         # US
         (startDate_recode >= as.Date("2017-03-26") & 
            startDate_recode <= as.Date("2017-04-03")) |
+          (startDate_recode >= as.Date("2017-04-16") & 
+           startDate_recode <= as.Date("2017-04-22")) |
           (startDate_recode >= as.Date("2017-06-18") & 
            startDate_recode <= as.Date("2017-06-24")),
         "US",region
@@ -176,6 +186,10 @@ df_sleep %>%
     subtitle = "based on data collected from my misfit",
     shape = "Weekday?"
     ) 
+
+```
+
+```{r}
   
 # hist by region and workday
 df_sleep %>%
@@ -419,6 +433,8 @@ df_steps <- df %>%
         # US
         (startDate >= as.Date("2017-03-26") & 
            startDate <= as.Date("2017-04-03")) |
+          (startDate >= as.Date("2017-04-16") & 
+           startDate <= as.Date("2017-04-22")) |
           (startDate >= as.Date("2017-06-18") & 
            startDate <= as.Date("2017-06-24")),
         "US",region
@@ -446,7 +462,7 @@ df_steps %>%
         shape = workday
         )
     ) + 
-  geom_point(alpha = 0.8) + 
+  geom_point(alpha = 0.6) + 
   ggthemes::theme_hc() +
   labs(
     x = "Date",
@@ -495,6 +511,42 @@ df_steps %>%
     #shape = "Weekday?"
     ) +
   facet_grid(region ~ .)
+```
+
+Look at the diff from Misfit.
+
+```{r}
+library(tidyr)
+df_steps %>%
+  spread(sourceName,total) %>%
+  mutate(
+    `iPhone - Misfit` = iPhone - Misfit,
+    `iWatch - Misfit` = iWatch - Misfit
+  ) %>%
+  select(
+    startDate, region,`iPhone - Misfit`,`iWatch - Misfit`
+  ) %>%
+  gather(
+    Device, Values, -startDate, -region
+  ) %>%
+  ggplot() + 
+  geom_point(
+    aes(x= startDate, 
+        y= Values, 
+        colour = Device
+        ),
+    alpha = 0.8) + 
+  ggthemes::theme_hc() +
+  labs(
+    x = "Date",
+    y = "Total number of steps",
+    #colour = "Where in the world?",
+    title = "Comparison of daily steps",
+    subtitle = "comparing iPhone and iWatch to Misfit",
+    colour = "Device"
+    ) +
+  facet_grid(region ~ .)
+  
 ```
 
 In the ternery plot, all sides are weighted to sum to zero, so distance from the center represents the skew between the step count recorded by the Misfit, iWatch and iPhone.
@@ -621,6 +673,30 @@ left_join(
   )
   
   
+```
+
+## 10,000 steps?
+
+```{r, eval = FALSE}
+library(rms)
+
+temp <- df_steps %>%
+    mutate(
+      sourceName = relevel(as.factor(sourceName), ref = "Misfit"),
+      healthy = ifelse(total >= 10000,1,0),
+      region = as.factor(region)
+    )
+
+m_steps_lrm <- lrm(
+  healthy ~ region + workday + sourceName, 
+  data = temp)
+
+test <- nomogram(m_steps_lrm)
+
+library(VRPM)
+
+# http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0164568
+
 ```
 
 
