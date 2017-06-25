@@ -481,13 +481,18 @@ df_steps <- df_steps %>%
   filter(
     startDate > as.Date("2017-03-22")
   ) %>%
+  # length of time
+  mutate(
+    daylength = as.numeric(difftime(endDate_full, startDate_full, units = "hours"))
+  ) %>%
   # summarise by day
   group_by(
     startDate,region,workday,sourceName
   ) %>%
   summarise(
-    total = sum(value)
-  ) %>% ungroup()
+    total = sum(value),
+    daylength = sum(daylength)
+  ) %>% ungroup() 
 
 ```
 
@@ -518,6 +523,7 @@ Look at the diff from Misfit.
 ```{r}
 library(tidyr)
 df_steps %>%
+  select(-daylength) %>%
   spread(sourceName,total) %>%
   mutate(
     `iPhone - Misfit` = iPhone - Misfit,
@@ -596,7 +602,7 @@ Compare relative to misfit.
 ```{r modelsteps}
 
 m_steps <- glm(
-  total ~ region + workday + sourceName, 
+  total ~ region + workday + sourceName + daylength, 
   data = df_steps %>%
     mutate(
       sourceName = relevel(as.factor(sourceName), ref = "Misfit")
@@ -637,6 +643,7 @@ left_join(
       .$coef == "sourceNameiWatch" ~ "iWatch (c.f. Misfit)",
       .$coef == "sourceNameiPhone" ~ "iPhone (c.f. Misfit)",
       .$coef == "regionUS" ~ "In the US (c.f. in Europe)",
+      .$coef == "daylength" ~ "Day length (1 hr)",
       TRUE ~ "Model intercept"
     )
   ) %>%
@@ -672,6 +679,53 @@ left_join(
   )
   
   
+```
+
+```{r}
+ 
+
+summary(fm1 <- aov(
+  total ~ sourceName #+ workday + region + daylength
+  ,data = df_steps %>%
+    mutate(
+      sourceName = relevel(as.factor(sourceName), ref = "Misfit")
+    )
+  ))
+
+d_turkey <- as.data.frame(TukeyHSD(fm1, "sourceName", ordered = TRUE)$sourceName) %>%
+  tibble::rownames_to_column("Comparison")
+
+d_turkey %>%
+  ggplot() +
+    geom_hline(
+      aes(yintercept=0), colour = "red", linetype="dotted"
+      ) +
+    geom_pointrange(
+      aes(
+        x = Comparison, 
+        y = diff, 
+        ymin = lwr, 
+        ymax = upr
+        )
+    ) +
+    geom_label(
+      aes(
+        x = Comparison, 
+        y = diff,
+        label = paste0(round(diff)," steps (95%CI ",round(lwr),", ",round(upr),")")
+      )
+    ) +
+    ggthemes::theme_hc() +
+    coord_flip() +
+    labs(
+      title = "Comparison of steps recorded by devices",
+      subtitle = "derived from Tukey's ‘Honest Significant Difference’ method",
+      x = "",
+      y = "Daily step count"
+    ) +
+  theme(
+    panel.grid.major.y = element_blank()
+  )
 ```
 
 ## 10,000 steps?
