@@ -9,8 +9,6 @@ output:
       smooth_scroll: false
 ---
 
----
-
 ```{r setup}
 library(dplyr)
 library(ggplot2)
@@ -18,7 +16,7 @@ library(lubridate)
 library(XML)
 
 #load apple health export.xml file
-  xml <- xmlParse("data/export_20170624.xml")
+  xml <- xmlParse("data/export_20170716.xml")
 
 #transform xml file to data frame - select the Record rows from the xml file
   df <- XML:::xmlAttrsToDataFrame(xml["//Record"])
@@ -539,9 +537,10 @@ df_steps %>%
   geom_point(
     aes(x= startDate, 
         y= Values, 
-        colour = Device
+        colour = Device,
+        shape = Device
         ),
-    alpha = 0.8) + 
+    alpha = 0.6) + 
   ggthemes::theme_hc() +
   labs(
     x = "Date",
