@@ -559,23 +559,23 @@ In the ternery plot, all sides are weighted to sum to zero, so distance from the
 ```{r ternery}
 
 # ggtern::ggtern(
-#   df_steps %>% 
+#   df_steps %>%
 #     select(sourceName,startDate,total) %>%
 #     tidyr::spread(sourceName,total),
 #   aes(iPhone,iWatch,Misfit)
-#   ) + 
+#   ) +
 #   # stat_density_tern(geom='polygon',
 #   #                       aes(fill=..level..),
 #   #                       base="identity",  ###NB Base Specification
-#   #                       colour='grey50') + 
-#   geom_point(colour = "red", alpha = 0.6, size = 3) + 
-#   ggtern::theme_rgbw() + 
-#   ggtern::theme_showarrows() + 
-#   #theme_legend_position('topleft') + 
+#   #                       colour='grey50') +
+#   geom_point(colour = "red", alpha = 0.6, size = 3) +
+#   ggtern::theme_rgbw() +
+#   ggtern::theme_showarrows() +
+#   #theme_legend_position('topleft') +
 #   labs(title  = "Threeway comparison of daily step count",
-#        subtitle = "ternery plot showing step count on the same day from 3 devices") + 
-#   ggtern::geom_Tisoprop(value=0.5,colour='darkred', alpha = 0.5) + 
-#   ggtern::geom_Lisoprop(value=0.5,colour='darkblue') + 
+#        subtitle = "ternery plot showing step count on the same day from 3 devices") +
+#   ggtern::geom_Tisoprop(value=0.5,colour='darkred', alpha = 0.5) +
+#   ggtern::geom_Lisoprop(value=0.5,colour='darkblue') +
 #   ggtern::geom_Risoprop(value=0.5,colour='darkgreen') +
 #   ggtern::weight_percent()
 ```
